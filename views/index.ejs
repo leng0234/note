@@ -8,8 +8,18 @@
 <body>
     <h1>Post-it Notes</h1>
 
+    <!-- Flash Messages -->
+    <% if (messages.success) { %>
+        <p class="message success"><%= messages.success %></p>
+    <% } %>
+    <% if (messages.error) { %>
+        <p class="message error"><%= messages.error %></p>
+    <% } %>
+
+    <!-- Note Form -->
     <form action="/add-note" method="POST">
         <textarea name="text" placeholder="Write your note here..." required></textarea>
+        
         <div class="color-options">
             <input type="radio" name="color" value="#ffadad" checked>
             <input type="radio" name="color" value="#ffd6a5">
@@ -17,19 +27,25 @@
             <input type="radio" name="color" value="#caffbf">
             <input type="radio" name="color" value="#9bf6ff">
         </div>
-        <button type="submit">Create Note</button>
+
+        <button type="submit" id="create-btn">Create Note</button>
     </form>
 
+    <!-- Display Notes -->
     <div class="notes-container">
-        <% notes.forEach((note, index) => { %>
+        <% notes.forEach((note) => { %>
             <div class="note" style="background: <%= note.color %>;">
                 <p><%= note.text %></p>
                 <form action="/delete-note" method="POST">
-                    <input type="hidden" name="index" value="<%= index %>">
+                    <input type="hidden" name="id" value="<%= note._id %>">
                     <button type="submit">X</button>
                 </form>
             </div>
         <% }) %>
     </div>
+
+    <script src="/script.js"></script>
 </body>
 </html>
+
+
