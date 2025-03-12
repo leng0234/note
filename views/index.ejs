@@ -13,7 +13,10 @@
     <% if (typeof messages !== 'undefined' && messages.success) { %>
         <p class="message success"><%= messages.success %></p>
     <% } %>
-    
+    <% if (typeof messages !== 'undefined' && messages.error) { %>
+        <p class="message error"><%= messages.error %></p>
+    <% } %>
+
     <!-- Note Form -->
     <form action="/add-note" method="POST">
         <textarea name="text" placeholder="Write your note here..." required></textarea>
@@ -36,9 +39,9 @@
 
     <!-- Display Notes -->
     <div class="notes-container">
-        <!-- Notes will be displayed here by client-side JavaScript -->
     </div>
 
     <script src="/script.js"></script>
 </body>
 </html>
+

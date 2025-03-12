@@ -1,98 +1,157 @@
 document.addEventListener("DOMContentLoaded", function () {
-    const colorOptions = document.querySelectorAll('input[name="color"]');
-    const createButton = document.querySelector('.create-note');  // Use querySelector to get the correct button
-    const notesContainer = document.querySelector('.notes-container'); // Get the notes container
+    const notesContainer = document.querySelector('.notes-container');
+    const forms = document.querySelectorAll('form');
+    const noteIds = new Set(); // Store unique note IDs to prevent duplicates
 
-    // Function to clear all notes from localStorage (delete old notes)
-    function clearAllNotesFromLocalStorage() {
-        localStorage.removeItem('notes');  // Clear notes from localStorage
+    // Fetch and display existing notes from MongoDB
+    async function loadNotes() {
+        try {
+            const response = await fetch('/api/notes');
+            const notes = await response.json();
+    
+            console.log("Loaded notes:", notes); // Check if duplicates appear in console
+    
+            notesContainer.innerHTML = ""; // ✅ Clear previous notes before loading
+    
+            notes.forEach(note => {
+                if (!noteIds.has(note._id)) {
+                    createNoteElement(note.text, note.color, note._id);
+                    noteIds.add(note._id);
+                }
+            });
+        } catch (error) {
+            console.error("Error loading notes:", error);
+        }
     }
 
-    // Load notes from localStorage when the page is loaded
-    function loadNotes() {
-        const notes = JSON.parse(localStorage.getItem('notes')) || [];
-        notes.forEach(note => {
-            createNoteElement(note.text, note.color);
-        });
-    }
+    // Create and append a note element
+    function createNoteElement(text, color, id = null) {
+        if (id && noteIds.has(id)) return; // Prevent duplicate notes
 
-    // Save notes to localStorage
-    function saveNotes() {
-        const notes = [];
-        document.querySelectorAll('.note').forEach(noteElement => {
-            const noteText = noteElement.querySelector('p').textContent;
-            const noteColor = noteElement.style.backgroundColor;
-            notes.push({ text: noteText, color: noteColor });
-        });
-        localStorage.setItem('notes', JSON.stringify(notes));
-    }
-
-    // Create a new note element and append it to the notes container
-    function createNoteElement(text, color) {
         const note = document.createElement('div');
         note.classList.add('note');
         note.style.backgroundColor = color;
         note.innerHTML = `
             <p>${text}</p>
-            <button class="delete-note">X</button>
+            <button class="delete-note" data-id="${id}">X</button>
         `;
-        
-        // Add event listener for deleting the note
-        note.querySelector('.delete-note').addEventListener('click', function () {
-            note.remove();  // Remove the note
-            saveNotes();    // Update localStorage
-        });
+
+        // Handle note deletion
+        const deleteButton = note.querySelector('.delete-note');
+        if (deleteButton) {
+            deleteButton.addEventListener('click', function () {
+                const noteId = this.getAttribute("data-id");
+                if (noteId) {
+                    deleteNoteFromDB(noteId, note);
+                } else {
+                    note.remove();
+                }
+            });
+        }
 
         notesContainer.appendChild(note);
+        if (id) noteIds.add(id); // Add the note ID to prevent duplicates
     }
 
-    // Update the color of the create button
-    function updateButtonColor() {
-        const selectedColor = document.querySelector('input[name="color"]:checked').value;
-        createButton.style.backgroundColor = selectedColor;
-    }
+    // Send new note to MongoDB
+    async function saveNoteToDB(text, color) {
+        try {
+            const response = await fetch('/api/notes', {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ text, color }),
+            });
 
-    colorOptions.forEach(option => {
-        option.addEventListener('change', updateButtonColor);
-    });
-
-    updateButtonColor();
-
-    // Create new note functionality
-    createButton.addEventListener('click', function (event) {
-        event.preventDefault(); // Prevent form submission
-
-        const selectedColor = document.querySelector('input[name="color"]:checked').value;
-        const noteText = document.querySelector('textarea[name="text"]').value;
-
-        // Create new note and append it
-        createNoteElement(noteText, selectedColor);
-
-        // Save the new note to localStorage
-        saveNotes();
-
-        // Clear the textarea
-        document.querySelector('textarea[name="text"]').value = '';
-    });
-
-    // Event delegation: Attach the delete functionality to the notes container
-    notesContainer.addEventListener('click', function (event) {
-        // Check if the clicked element is a delete button
-        if (event.target && event.target.classList.contains('delete-note')) {
-            const note = event.target.closest('.note');  // Find the closest note element
-            note.remove();  // Remove the note
-            saveNotes();    // Update localStorage after deletion
+            const data = await response.json();
+            if (response.ok) {
+                if (!noteIds.has(data.note._id)) { // Check before adding
+                    createNoteElement(text, color, data.note._id);
+                    noteIds.add(data.note._id);
+                }
+            } else {
+                alert("Error saving note!");
+            }
+        } catch (error) {
+            console.error("Error:", error);
         }
+    }
+
+    // Delete a note from MongoDB
+    async function deleteNoteFromDB(noteId, noteElement) {
+        try {
+            const response = await fetch(`/api/notes/${noteId}`, { method: "DELETE" });
+    
+            const data = await response.json();
+            console.log("Server Response:", data);
+    
+            if (response.ok) {
+                noteElement.remove();
+                noteIds.delete(noteId); // ✅ Ensure we remove it from Set
+            } else {
+                alert(`Failed to delete note: ${data.error}`);
+            }
+        } catch (error) {
+            console.error("Error deleting note:", error);
+        }
+    }
+    
+    
+
+    // Attach event listeners to forms
+    forms.forEach(form => {
+        const createButton = form.querySelector('.create-note');
+        const textArea = form.querySelector('textarea[name="text"]');
+        const colorOptions = form.querySelectorAll('input[name="color"]');
+
+        if (colorOptions.length === 0) {
+            console.warn("No color options found in form!");
+            return;
+        }
+
+        function updateButtonColor() {
+            const selectedColorOption = form.querySelector('input[name="color"]:checked');
+
+            if (!selectedColorOption) {
+                console.warn("No color option selected! Defaulting to first color.");
+                if (colorOptions.length > 0) {
+                    colorOptions[0].checked = true;
+                }
+            }
+
+            createButton.style.backgroundColor = selectedColorOption ? selectedColorOption.value : colorOptions[0].value;
+        }
+
+        colorOptions.forEach(option => {
+            option.addEventListener('change', updateButtonColor);
+        });
+
+        updateButtonColor();
+
+        // Handle new note creation
+        createButton.addEventListener('click', function (event) {
+            event.preventDefault();
+
+            const selectedColorOption = form.querySelector('input[name="color"]:checked');
+            if (!selectedColorOption) {
+                alert("Please select a color!");
+                return;
+            }
+
+            const noteText = textArea.value.trim();
+            const selectedColor = selectedColorOption.value;
+
+            if (noteText === "") {
+                alert("Note text cannot be empty!");
+                return;
+            }
+
+            // Send note to MongoDB
+            saveNoteToDB(noteText, selectedColor);
+
+            textArea.value = ""; // Clear input
+        });
     });
 
-    // Hide messages after 3 seconds
-    setTimeout(() => {
-        document.querySelectorAll('.message').forEach(msg => msg.style.display = "none");
-    }, 3000);
-
-    // Clear all notes from localStorage on page load (if needed)
-    clearAllNotesFromLocalStorage();
-
-    // Load the notes when the page is loaded (after clearing)
+    // Load notes on page load
     loadNotes();
 });

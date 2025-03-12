@@ -4,13 +4,18 @@ const bodyParser = require('body-parser');
 const mongoose = require('mongoose');
 const session = require('express-session');
 const flash = require('express-flash');
+const cors = require('cors');
+const path = require('path');
 const Note = require('./note');
 
 const app = express();
 
+
 // Middleware
 app.use(bodyParser.urlencoded({ extended: true }));
-app.use(express.static('public'));
+app.use(bodyParser.json()); // Enable JSON for API requests
+app.use(cors()); // Enable CORS for frontend requests
+app.use(express.static(path.join(__dirname, 'public')));
 app.set('view engine', 'ejs');
 
 app.use(session({ secret: 'secret', resave: false, saveUninitialized: true }));
@@ -24,7 +29,7 @@ mongoose.connect(process.env.MONGO_URI, {
 .then(() => console.log("✅ MongoDB Connected"))
 .catch(err => console.error("❌ Database connection error:", err));
 
-// Home Route - Fetch All Notes
+// 🏠 Home Route - Renders EJS
 app.get('/', async (req, res) => {
     try {
         const notes = await Note.find();
@@ -35,38 +40,51 @@ app.get('/', async (req, res) => {
     }
 });
 
-// Add Note Route
-app.post('/add-note', async (req, res) => {
+// 📌 API Route: Fetch All Notes (For JavaScript)
+app.get('/api/notes', async (req, res) => {
+    try {
+        const notes = await Note.find();
+        res.json(notes);
+    } catch (err) {
+        res.status(500).json({ error: "Error fetching notes" });
+    }
+});
+
+// ✏️ API Route: Add a Note
+app.post('/api/notes', async (req, res) => {
     try {
         const { text, color } = req.body;
-        await Note.create({ text, color });
-        req.flash('success', 'Note added successfully!');
-        res.redirect('/');
+        if (!text.trim()) {
+            return res.status(400).json({ error: "Note text cannot be empty." });
+        }
+        const newNote = await Note.create({ text, color });
+        res.status(201).json({ message: "Note added successfully!", note: newNote });
     } catch (err) {
-        console.error(err);
-        req.flash('error', 'Failed to add note.');
-        res.redirect('/');
+        res.status(500).json({ error: "Failed to add note." });
     }
 });
 
-// Delete Note Route
-app.post('/delete-note', async (req, res) => {
+// 🗑 API Route: Delete a Note
+app.delete('/api/notes/:id', async (req, res) => {
     try {
-        const noteId = req.body.id;
-        if (!noteId) {
-            req.flash('error', 'Note ID is missing.');
-            return res.redirect('/');
+        const noteId = req.params.id;
+        if (!mongoose.Types.ObjectId.isValid(noteId)) {
+            return res.status(400).json({ error: "Invalid Note ID format." });
         }
 
-        await Note.findByIdAndDelete(noteId);
-        req.flash('success', 'Note deleted successfully!');
-        res.redirect('/');
+        const deletedNote = await Note.findByIdAndDelete(noteId);
+        if (!deletedNote) {
+            return res.status(404).json({ error: "Note not found." });
+        }
+
+        res.json({ message: "Note deleted successfully!" });
     } catch (err) {
-        console.error("❌ Error deleting note:", err);
-        req.flash('error', 'Error deleting note.');
-        res.redirect('/');
+        console.error("Delete error:", err);
+        res.status(500).json({ error: "Error deleting note." });
     }
 });
+
+
 
 // Start Server
 const PORT = process.env.PORT || 3000;
